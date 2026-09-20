@@ -3,6 +3,13 @@ package com.example.whatsappsewa
 import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.provider.ContactsContract
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+
 import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
@@ -33,6 +40,26 @@ class MainActivity : AppCompatActivity() {
     private val contacts = mutableListOf<Contact>()
     private lateinit var adapter: ContactAdapter
 
+    private val requestContactsPermission =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            pickContact.launch(null)
+        } else {
+            Toast.makeText(
+                this,
+                "Contacts permission जरूरी है",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+private val pickContact =
+    registerForActivityResult(ActivityResultContracts.PickContact()) { uri ->
+        uri?.let {
+            readSelectedContact(it)
+        }
+    }
+
     private val prefs by lazy {
         getSharedPreferences("sewa_sender", Context.MODE_PRIVATE)
     }
@@ -55,8 +82,16 @@ class MainActivity : AppCompatActivity() {
         recyclerView.adapter = adapter
 
         findViewById<Button>(R.id.btnAdd).setOnClickListener {
-            showContactDialog(null)
-        }
+    if (ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_CONTACTS
+        ) != PackageManager.PERMISSION_GRANTED
+    ) {
+        requestContactsPermission.launch(Manifest.permission.READ_CONTACTS)
+    } else {
+        pickContact.launch(null)
+    }
+}
 
         messageBox.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -80,6 +115,151 @@ class MainActivity : AppCompatActivity() {
 
         updateCounts()
     }
+
+    private fun readSelectedContact(uri: Uri) {
+
+    val projection = arrayOf(
+        ContactsContract.Contacts._ID,
+        ContactsContract.Contacts.DISPLAY_NAME,
+        ContactsContract.Contacts.HAS_PHONE_NUMBER
+    )
+
+    contentResolver.query(
+        uri,
+        projection,
+        null,
+        null,
+        null
+    )?.use { cursor ->
+
+        if (!cursor.moveToFirst()) return
+
+        val id = cursor.getString(
+            cursor.getColumnIndexOrThrow(
+                ContactsContract.Contacts._ID
+            )
+        )
+
+        val name = cursor.getString(
+            cursor.getColumnIndexOrThrow(
+                ContactsContract.Contacts.DISPLAY_NAME
+            )
+        )
+
+        val hasPhone = cursor.getInt(
+            cursor.getColumnIndexOrThrow(
+                ContactsContract.Contacts.HAS_PHONE_NUMBER
+            )
+        ) > 0
+
+        if (!hasPhone) {
+            Toast.makeText(
+                this,
+                "इस Contact में मोबाइल नंबर नहीं है",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val numbers = mutableListOf<String>()
+
+        contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            ),
+            "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID}=?",
+            arrayOf(id),
+            null
+        )?.use { phoneCursor ->
+
+            while (phoneCursor.moveToNext()) {
+
+                val number = phoneCursor.getString(
+                    phoneCursor.getColumnIndexOrThrow(
+                        ContactsContract.CommonDataKinds.Phone.NUMBER
+                    )
+                )
+
+                if (!numbers.contains(number)) {
+                    numbers.add(number)
+                }
+            }
+        }
+
+        if (numbers.isEmpty()) {
+
+            Toast.makeText(
+                this,
+                "मोबाइल नंबर नहीं मिला",
+                Toast.LENGTH_SHORT
+            ).show()
+
+        } else if (numbers.size == 1) {
+
+            addPhoneContact(name, numbers[0])
+
+        } else {
+
+            AlertDialog.Builder(this)
+                .setTitle("कौन-सा नंबर जोड़ना है?")
+                .setItems(numbers.toTypedArray()) { _, which ->
+                    addPhoneContact(name, numbers[which])
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+}
+private fun addPhoneContact(name: String, rawNumber: String) {
+
+    val mobile = rawNumber
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+
+    val duplicate = contacts.any {
+        it.mobile
+            .replace(" ", "")
+            .replace("-", "")
+            .replace("+91", "")
+            .removePrefix("0")
+            .takeLast(10) ==
+        mobile
+            .replace("+91", "")
+            .removePrefix("0")
+            .takeLast(10)
+    }
+
+    if (duplicate) {
+        Toast.makeText(
+            this,
+            "यह Contact पहले से मौजूद है",
+            Toast.LENGTH_SHORT
+        ).show()
+        return
+    }
+
+    contacts.add(
+        Contact(
+            name = name,
+            mobile = mobile,
+            sent = false
+        )
+    )
+
+    saveContacts()
+    adapter.notifyDataSetChanged()
+    updateCounts()
+
+    Toast.makeText(
+        this,
+        "$name Contact में जोड़ दिया गया",
+        Toast.LENGTH_SHORT
+    ).show()
+}
+    
 
     private fun showContactDialog(editIndex: Int?) {
 
