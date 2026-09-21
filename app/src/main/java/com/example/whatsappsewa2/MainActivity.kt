@@ -35,16 +35,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var countsText: TextView
 
     private val contacts = mutableListOf<Contact>()
+
     private lateinit var adapter: ContactAdapter
 
     private val prefs by lazy {
-        getSharedPreferences("sewa_sender_new", Context.MODE_PRIVATE)
+        getSharedPreferences(
+            "sewa_sender_new",
+            Context.MODE_PRIVATE
+        )
     }
 
     private val requestContactsPermission =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { granted ->
+
             if (granted) {
                 pickContact.launch(null)
             } else {
@@ -60,6 +65,7 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(
             ActivityResultContracts.PickContact()
         ) { uri ->
+
             uri?.let {
                 readSelectedContact(it)
             }
@@ -96,10 +102,13 @@ class MainActivity : AppCompatActivity() {
                     Manifest.permission.READ_CONTACTS
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
+
                 requestContactsPermission.launch(
                     Manifest.permission.READ_CONTACTS
                 )
+
             } else {
+
                 pickContact.launch(null)
             }
         }
@@ -121,8 +130,12 @@ class MainActivity : AppCompatActivity() {
                     before: Int,
                     count: Int
                 ) {
+
                     prefs.edit()
-                        .putString("message", s.toString())
+                        .putString(
+                            "message",
+                            s.toString()
+                        )
                         .apply()
                 }
 
@@ -150,6 +163,7 @@ class MainActivity : AppCompatActivity() {
                     before: Int,
                     count: Int
                 ) {
+
                     adapter.notifyDataSetChanged()
                 }
 
@@ -162,6 +176,10 @@ class MainActivity : AppCompatActivity() {
 
         updateCounts()
     }
+
+    // ---------------------------------------------------------
+    // PHONE CONTACT PICKER
+    // ---------------------------------------------------------
 
     private fun readSelectedContact(uri: Uri) {
 
@@ -284,6 +302,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---------------------------------------------------------
+    // PHONE NUMBER
+    // ---------------------------------------------------------
+
     private fun normalize(raw: String): String {
 
         return raw
@@ -318,7 +340,10 @@ class MainActivity : AppCompatActivity() {
 
         if (
             contacts.any {
-                sameNumber(it.mobile, mobile)
+                sameNumber(
+                    it.mobile,
+                    mobile
+                )
             }
         ) {
 
@@ -351,6 +376,10 @@ class MainActivity : AppCompatActivity() {
             Toast.LENGTH_SHORT
         ).show()
     }
+
+    // ---------------------------------------------------------
+    // EDIT CONTACT
+    // ---------------------------------------------------------
 
     private fun showEdit(index: Int) {
 
@@ -388,3 +417,569 @@ class MainActivity : AppCompatActivity() {
                     contacts[index].mobile
                 )
             }
+
+        box.addView(
+            nameInput,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        box.addView(
+            phoneInput,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("Contact Edit करें")
+            .setView(box)
+            .setNegativeButton(
+                "Cancel",
+                null
+            )
+            .setPositiveButton(
+                "Save"
+            ) { _, _ ->
+
+                val newName =
+                    nameInput.text
+                        .toString()
+                        .trim()
+
+                val newNumber =
+                    normalize(
+                        phoneInput.text
+                            .toString()
+                            .trim()
+                    )
+
+                if (
+                    newName.isEmpty() ||
+                    newNumber.isEmpty()
+                ) {
+
+                    Toast.makeText(
+                        this,
+                        "नाम और मोबाइल नंबर दोनों भरें",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setPositiveButton
+                }
+
+                val duplicate =
+                    contacts.indices.any { i ->
+
+                        i != index &&
+                            sameNumber(
+                                contacts[i].mobile,
+                                newNumber
+                            )
+                    }
+
+                if (duplicate) {
+
+                    Toast.makeText(
+                        this,
+                        "यह मोबाइल नंबर पहले से मौजूद है",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setPositiveButton
+                }
+
+                contacts[index].name =
+                    newName
+
+                contacts[index].mobile =
+                    newNumber
+
+                contacts[index].sent =
+                    false
+
+                saveContacts()
+
+                adapter.notifyDataSetChanged()
+
+                updateCounts()
+            }
+            .show()
+    }
+
+    // ---------------------------------------------------------
+    // DELETE CONTACT
+    // ---------------------------------------------------------
+
+    private fun deleteContact(index: Int) {
+
+        AlertDialog.Builder(this)
+            .setTitle("Contact हटाएँ?")
+            .setMessage(
+                "${contacts[index].name} को हटाना है?"
+            )
+            .setNegativeButton(
+                "Cancel",
+                null
+            )
+            .setPositiveButton(
+                "Delete"
+            ) { _, _ ->
+
+                contacts.removeAt(index)
+
+                saveContacts()
+
+                adapter.notifyDataSetChanged()
+
+                updateCounts()
+            }
+            .show()
+    }
+
+    // ---------------------------------------------------------
+    // WHATSAPP
+    // ---------------------------------------------------------
+
+    private fun sendWhatsApp(index: Int) {
+
+        val contact = contacts[index]
+
+        var number =
+            contact.mobile
+                .replace(" ", "")
+                .replace("-", "")
+                .replace("(", "")
+                .replace(")", "")
+
+        if (number.startsWith("0")) {
+            number = number.removePrefix("0")
+        }
+
+        if (!number.startsWith("+")) {
+            number = "+91$number"
+        }
+
+        val commonMessage =
+            messageBox.text
+                .toString()
+                .trim()
+
+        if (commonMessage.isEmpty()) {
+
+            Toast.makeText(
+                this,
+                "पहले Daily Message लिखें",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            return
+        }
+
+        val finalMessage =
+            "${contact.name} जी\n" +
+            "राधा स्वामी जी 🙏🏼\n" +
+            commonMessage
+
+        val encodedMessage =
+            URLEncoder.encode(
+                finalMessage,
+                "UTF-8"
+            )
+
+        val uri =
+            Uri.parse(
+                "https://wa.me/$number?text=$encodedMessage"
+            )
+
+        try {
+
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    uri
+                )
+            )
+
+            contact.sent = true
+
+            saveContacts()
+
+            adapter.notifyDataSetChanged()
+
+            updateCounts()
+
+        } catch (e: Exception) {
+
+            Toast.makeText(
+                this,
+                "WhatsApp खोलने में समस्या हुई",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    // ---------------------------------------------------------
+    // SAVE CONTACTS
+    // ---------------------------------------------------------
+
+    private fun saveContacts() {
+
+        val array = JSONArray()
+
+        contacts.forEach { contact ->
+
+            val obj = JSONObject()
+
+            obj.put(
+                "name",
+                contact.name
+            )
+
+            obj.put(
+                "mobile",
+                contact.mobile
+            )
+
+            obj.put(
+                "sent",
+                contact.sent
+            )
+
+            array.put(obj)
+        }
+
+        prefs.edit()
+            .putString(
+                "contacts",
+                array.toString()
+            )
+            .apply()
+    }
+
+    // ---------------------------------------------------------
+    // LOAD CONTACTS
+    // ---------------------------------------------------------
+
+    private fun loadContacts() {
+
+        contacts.clear()
+
+        val saved =
+            prefs.getString(
+                "contacts",
+                null
+            ) ?: return
+
+        try {
+
+            val array =
+                JSONArray(saved)
+
+            for (i in 0 until array.length()) {
+
+                val obj =
+                    array.getJSONObject(i)
+
+                contacts.add(
+                    Contact(
+                        name =
+                            obj.optString(
+                                "name"
+                            ),
+
+                        mobile =
+                            obj.optString(
+                                "mobile"
+                            ),
+
+                        sent =
+                            obj.optBoolean(
+                                "sent",
+                                false
+                            )
+                    )
+                )
+            }
+
+        } catch (e: Exception) {
+
+            Toast.makeText(
+                this,
+                "Contacts data पढ़ने में समस्या",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    // ---------------------------------------------------------
+    // COUNTS
+    // ---------------------------------------------------------
+
+    private fun updateCounts() {
+
+        val total =
+            contacts.size
+
+        val sent =
+            contacts.count {
+                it.sent
+            }
+
+        val pending =
+            total - sent
+
+        countsText.text =
+            "कुल: $total    भेजे: $sent    बाकी: $pending"
+    }
+
+    // ---------------------------------------------------------
+    // CONTACT ADAPTER
+    // ---------------------------------------------------------
+
+    inner class ContactAdapter :
+        RecyclerView.Adapter<ContactAdapter.ContactViewHolder>() {
+
+        inner class ContactViewHolder(
+            val layout: LinearLayout
+        ) : RecyclerView.ViewHolder(layout)
+
+        override fun onCreateViewHolder(
+            parent: ViewGroup,
+            viewType: Int
+        ): ContactViewHolder {
+
+            val layout =
+                LinearLayout(
+                    this@MainActivity
+                ).apply {
+
+                    orientation =
+                        LinearLayout.VERTICAL
+
+                    setPadding(
+                        20,
+                        20,
+                        20,
+                        20
+                    )
+
+                    background =
+                        getDrawable(
+                            android.R.drawable.dialog_holo_light_frame
+                        )
+                }
+
+            return ContactViewHolder(layout)
+        }
+
+        override fun getItemCount(): Int {
+
+            val query =
+                searchBox.text
+                    .toString()
+                    .trim()
+                    .lowercase()
+
+            return if (query.isEmpty()) {
+
+                contacts.size
+
+            } else {
+
+                contacts.count {
+
+                    it.name
+                        .lowercase()
+                        .contains(query) ||
+
+                        it.mobile
+                            .contains(query)
+                }
+            }
+        }
+
+        private fun getContactAt(
+            position: Int
+        ): Int {
+
+            val query =
+                searchBox.text
+                    .toString()
+                    .trim()
+                    .lowercase()
+
+            if (query.isEmpty()) {
+                return position
+            }
+
+            val filtered =
+                contacts.filter {
+
+                    it.name
+                        .lowercase()
+                        .contains(query) ||
+
+                        it.mobile
+                            .contains(query)
+                }
+
+            return contacts.indexOf(
+                filtered[position]
+            )
+        }
+
+        override fun onBindViewHolder(
+            holder: ContactViewHolder,
+            position: Int
+        ) {
+
+            val actualIndex =
+                getContactAt(position)
+
+            val contact =
+                contacts[actualIndex]
+
+            val layout =
+                holder.layout
+
+            layout.removeAllViews()
+
+            val nameText =
+                TextView(
+                    this@MainActivity
+                ).apply {
+
+                    text =
+                        "${contact.name} जी"
+
+                    textSize = 18f
+
+                    setPadding(
+                        0,
+                        0,
+                        0,
+                        8
+                    )
+                }
+
+            val numberText =
+                TextView(
+                    this@MainActivity
+                ).apply {
+
+                    text =
+                        contact.mobile
+
+                    textSize = 15f
+                }
+
+            val statusText =
+                TextView(
+                    this@MainActivity
+                ).apply {
+
+                    text =
+                        if (contact.sent) {
+                            "स्थिति: भेजा गया"
+                        } else {
+                            "स्थिति: बाकी"
+                        }
+
+                    textSize = 14f
+
+                    setPadding(
+                        0,
+                        8,
+                        0,
+                        8
+                    )
+                }
+
+            val buttonRow =
+                LinearLayout(
+                    this@MainActivity
+                ).apply {
+
+                    orientation =
+                        LinearLayout.HORIZONTAL
+                }
+
+            val sendButton =
+                Button(
+                    this@MainActivity
+                ).apply {
+
+                    text = "SEND"
+
+                    setOnClickListener {
+
+                        sendWhatsApp(
+                            actualIndex
+                        )
+                    }
+                }
+
+            val editButton =
+                Button(
+                    this@MainActivity
+                ).apply {
+
+                    text = "Edit"
+
+                    setOnClickListener {
+
+                        showEdit(
+                            actualIndex
+                        )
+                    }
+                }
+
+            val deleteButton =
+                Button(
+                    this@MainActivity
+                ).apply {
+
+                    text = "Delete"
+
+                    setOnClickListener {
+
+                        deleteContact(
+                            actualIndex
+                        )
+                    }
+                }
+
+            buttonRow.addView(
+                sendButton
+            )
+
+            buttonRow.addView(
+                editButton
+            )
+
+            buttonRow.addView(
+                deleteButton
+            )
+
+            layout.addView(
+                nameText
+            )
+
+            layout.addView(
+                numberText
+            )
+
+            layout.addView(
+                statusText
+            )
+
+            layout.addView(
+                buttonRow
+            )
+        }
+    }
+}
